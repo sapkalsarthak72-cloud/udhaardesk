@@ -1,0 +1,169 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Pillar 1: Global Safety Net (Default-Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Primitive Helpers
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isShopOwner(shopId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/shops/$(shopId)) &&
+        get(/databases/$(database)/documents/shops/$(shopId)).data.ownerUid == request.auth.uid;
+    }
+
+    // Validation Blueprint: User Profile
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'name', 'email', 'phone', 'createdAt']) &&
+        data.uid is string && data.uid == request.auth.uid &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+        data.email is string && data.email.size() > 3 && data.email.size() <= 128 &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 20));
+    }
+
+    // Validation Blueprint: Shop Profile
+    function isValidShop(data) {
+      return data.keys().hasAll(['shopId', 'ownerUid', 'shopName', 'phone', 'createdAt']) &&
+        data.keys().hasOnly(['shopId', 'ownerUid', 'shopName', 'ownerName', 'phone', 'address', 'upiId', 'preferredLanguage', 'createdAt', 'currencySymbol']) &&
+        data.shopId is string && isValidId(data.shopId) &&
+        data.ownerUid is string && data.ownerUid == request.auth.uid &&
+        data.shopName is string && data.shopName.size() > 0 && data.shopName.size() <= 120 &&
+        data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 20 &&
+        (!('ownerName' in data) || (data.ownerName is string && data.ownerName.size() <= 100)) &&
+        (!('address' in data) || (data.address is string && data.address.size() <= 300)) &&
+        (!('upiId' in data) || (data.upiId is string && data.upiId.size() <= 100)) &&
+        (!('preferredLanguage' in data) || (data.preferredLanguage in ['hinglish', 'hindi', 'english'])) &&
+        (!('currencySymbol' in data) || (data.currencySymbol is string && data.currencySymbol.size() <= 5));
+    }
+
+    // Validation Blueprint: Customer Record
+    function isValidCustomer(data, shopId) {
+      return data.keys().hasAll(['customerId', 'shopId', 'name', 'phone', 'createdAt']) &&
+        data.keys().hasOnly(['customerId', 'shopId', 'name', 'phone', 'address', 'notes', 'createdAt', 'archivedAt', 'cachedBalancePaise']) &&
+        data.customerId is string && isValidId(data.customerId) &&
+        data.shopId is string && data.shopId == shopId &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+        data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 20 &&
+        (!('address' in data) || (data.address is string && data.address.size() <= 300)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+        (!('archivedAt' in data) || data.archivedAt == null || (data.archivedAt is string && data.archivedAt.size() <= 50)) &&
+        (!('cachedBalancePaise' in data) || data.cachedBalancePaise is int);
+    }
+
+    // Validation Blueprint: Transaction Record
+    function isValidTransaction(data, shopId) {
+      return data.keys().hasAll(['transactionId', 'shopId', 'customerId', 'type', 'amountPaise', 'transactionDate', 'createdAt', 'status']) &&
+        data.keys().hasOnly(['transactionId', 'shopId', 'customerId', 'type', 'amountPaise', 'items', 'paymentMethod', 'transactionDate', 'createdAt', 'createdBy', 'referenceNumber', 'notes', 'status']) &&
+        data.transactionId is string && isValidId(data.transactionId) &&
+        data.shopId is string && data.shopId == shopId &&
+        data.customerId is string && isValidId(data.customerId) &&
+        data.type in ['CREDIT', 'PAYMENT'] &&
+        data.amountPaise is int && data.amountPaise > 0 && data.amountPaise <= 1000000000 &&
+        data.transactionDate is string && data.transactionDate.size() <= 20 &&
+        data.status in ['COMPLETED', 'REVERSED'] &&
+        (!('paymentMethod' in data) || (data.paymentMethod in ['CASH', 'UPI', 'BANK_TRANSFER', 'OTHER'])) &&
+        (!('createdBy' in data) || (data.createdBy is string && data.createdBy.size() <= 128)) &&
+        (!('referenceNumber' in data) || (data.referenceNumber is string && data.referenceNumber.size() <= 100)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+        (!('items' in data) || (data.items is list && data.items.size() <= 50));
+    }
+
+    // Validation Blueprint: Audit Log
+    function isValidAuditLog(data, shopId) {
+      return data.keys().hasAll(['logId', 'shopId', 'actorUid', 'action', 'entityType', 'entityId', 'timestamp']) &&
+        data.keys().hasOnly(['logId', 'shopId', 'actorUid', 'action', 'entityType', 'entityId', 'timestamp', 'details']) &&
+        data.logId is string && isValidId(data.logId) &&
+        data.shopId is string && data.shopId == shopId &&
+        data.actorUid is string && data.actorUid == request.auth.uid &&
+        data.action is string && data.action.size() <= 100 &&
+        data.entityType in ['CUSTOMER', 'TRANSACTION', 'SHOP'] &&
+        data.entityId is string && isValidId(data.entityId);
+    }
+
+    // Users Collection (PII isolation)
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false; // Blanket enumeration prohibited
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidUser(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone']);
+      allow delete: if false;
+    }
+
+    // Shops Collection
+    match /shops/{shopId} {
+      allow get: if isShopOwner(shopId);
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(shopId) &&
+        incoming().ownerUid == request.auth.uid && isValidShop(incoming());
+      allow update: if isShopOwner(shopId) && isValidShop(incoming()) &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().shopId == existing().shopId &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['shopName', 'ownerName', 'phone', 'address', 'upiId', 'preferredLanguage', 'currencySymbol']);
+      allow delete: if false; // Preservation of commercial store identity
+
+      // Scoped Subcollection: Customers
+      match /customers/{customerId} {
+        allow get: if isShopOwner(shopId) && isValidId(customerId);
+        allow list: if isShopOwner(shopId);
+        allow create: if isShopOwner(shopId) && isValidId(customerId) &&
+          isValidCustomer(incoming(), shopId);
+        allow update: if isShopOwner(shopId) && isValidId(customerId) &&
+          isValidCustomer(incoming(), shopId) &&
+          incoming().customerId == existing().customerId &&
+          incoming().shopId == existing().shopId &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'address', 'notes', 'archivedAt', 'cachedBalancePaise']);
+        allow delete: if false; // Deleting customers must preserve financial records; use archive instead
+      }
+
+      // Scoped Subcollection: Transactions (Append-Only Ledger)
+      match /transactions/{transactionId} {
+        allow get: if isShopOwner(shopId) && isValidId(transactionId);
+        allow list: if isShopOwner(shopId);
+        allow create: if isShopOwner(shopId) && isValidId(transactionId) &&
+          isValidTransaction(incoming(), shopId) &&
+          exists(/databases/$(database)/documents/shops/$(shopId)/customers/$(incoming().customerId));
+        // Status correction only (COMPLETED -> REVERSED), no silent rewriting
+        allow update: if isShopOwner(shopId) && isValidId(transactionId) &&
+          isValidTransaction(incoming(), shopId) &&
+          incoming().transactionId == existing().transactionId &&
+          incoming().shopId == existing().shopId &&
+          incoming().customerId == existing().customerId &&
+          incoming().amountPaise == existing().amountPaise &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes']);
+        allow delete: if false; // Ledger is strictly append-only
+      }
+
+      // Scoped Subcollection: Audit Logs
+      match /auditLogs/{logId} {
+        allow get: if isShopOwner(shopId) && isValidId(logId);
+        allow list: if isShopOwner(shopId);
+        allow create: if isShopOwner(shopId) && isValidId(logId) &&
+          isValidAuditLog(incoming(), shopId);
+        allow update, delete: if false; // Audit logs are immutable
+      }
+    }
+  }
+}

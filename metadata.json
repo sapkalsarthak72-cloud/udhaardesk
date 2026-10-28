@@ -1,0 +1,6 @@
+{
+  "name": "UdhaarDesk",
+  "description": "Dukaan ka hisaab, ab ekdum aasaan! Mobile-first digital khata and credit management for Indian kirana shop owners with WhatsApp reminders and UPI collection.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

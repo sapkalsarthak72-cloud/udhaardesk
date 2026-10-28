@@ -1,0 +1,107 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Registered shop owner user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 128 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "createdAt"]
+    },
+    "Shop": {
+      "title": "Kirana Shop Profile",
+      "description": "Store details and owner settings",
+      "type": "object",
+      "properties": {
+        "shopId": { "type": "string", "maxLength": 128 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "shopName": { "type": "string", "maxLength": 120 },
+        "ownerName": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "address": { "type": "string", "maxLength": 300 },
+        "upiId": { "type": "string", "maxLength": 100 },
+        "preferredLanguage": { "type": "string", "enum": ["hinglish", "hindi", "english"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shopId", "ownerUid", "shopName", "phone", "createdAt"]
+    },
+    "Customer": {
+      "title": "Customer Record",
+      "description": "Customer in the shop's khata book",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string", "maxLength": 128 },
+        "shopId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "address": { "type": "string", "maxLength": 300 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "archivedAt": { "type": "string" }
+      },
+      "required": ["customerId", "shopId", "name", "phone", "createdAt"]
+    },
+    "Transaction": {
+      "title": "Khata Ledger Transaction",
+      "description": "Append-only financial transaction record",
+      "type": "object",
+      "properties": {
+        "transactionId": { "type": "string", "maxLength": 128 },
+        "shopId": { "type": "string", "maxLength": 128 },
+        "customerId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["CREDIT", "PAYMENT"] },
+        "amountPaise": { "type": "integer" },
+        "paymentMethod": { "type": "string", "enum": ["CASH", "UPI", "BANK_TRANSFER", "OTHER"] },
+        "transactionDate": { "type": "string", "maxLength": 20 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "referenceNumber": { "type": "string", "maxLength": 100 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["COMPLETED", "REVERSED"] }
+      },
+      "required": ["transactionId", "shopId", "customerId", "type", "amountPaise", "transactionDate", "createdAt", "status"]
+    },
+    "AuditLog": {
+      "title": "Audit Log",
+      "description": "Financial correction and modification audit trail",
+      "type": "object",
+      "properties": {
+        "logId": { "type": "string", "maxLength": 128 },
+        "shopId": { "type": "string", "maxLength": 128 },
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 100 },
+        "entityType": { "type": "string", "enum": ["CUSTOMER", "TRANSACTION", "SHOP"] },
+        "entityId": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["logId", "shopId", "actorUid", "action", "entityType", "entityId", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "#/entities/User",
+      "description": "User profile containing owner PII; read/write restricted to owner."
+    },
+    "/shops/{shopId}": {
+      "schema": "#/entities/Shop",
+      "description": "Shop profiles owned by authenticated shopkeepers."
+    },
+    "/shops/{shopId}/customers/{customerId}": {
+      "schema": "#/entities/Customer",
+      "description": "Khata customer records scoped to parent shop."
+    },
+    "/shops/{shopId}/transactions/{transactionId}": {
+      "schema": "#/entities/Transaction",
+      "description": "Append-only financial entries scoped to parent shop."
+    },
+    "/shops/{shopId}/auditLogs/{logId}": {
+      "schema": "#/entities/AuditLog",
+      "description": "Append-only security and correction audit entries scoped to parent shop."
+    }
+  }
+}
